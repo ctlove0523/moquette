@@ -136,6 +136,30 @@ public class Server {
 
     public void startServer(IConfig config, List<? extends InterceptHandler> handlers, ISslContextCreator sslCtxCreator,
                             IAuthenticator authenticator, IAuthorizatorPolicy authorizatorPolicy) {
+        final String persistencePath = config.getProperty(BrokerConstants.PERSISTENT_STORE_PROPERTY_NAME);
+        final ISubscriptionsRepository subscriptionsRepository;
+        final IQueueRepository queueRepository;
+        final IRetainedRepository retainedRepository;
+        if (persistencePath != null && !persistencePath.isEmpty()) {
+            LOG.trace("Configuring H2 subscriptions store to {}", persistencePath);
+            h2Builder = new H2Builder(config, scheduler).initStore();
+            subscriptionsRepository = h2Builder.subscriptionsRepository();
+            queueRepository = h2Builder.queueRepository();
+            retainedRepository = h2Builder.retainedRepository();
+        } else {
+            LOG.trace("Configuring in-memory subscriptions store");
+            subscriptionsRepository = new MemorySubscriptionsRepository();
+            queueRepository = new MemoryQueueRepository();
+            retainedRepository = new MemoryRetainedRepository();
+        }
+
+        startServer(config, handlers, sslCtxCreator, authenticator, authorizatorPolicy, subscriptionsRepository, queueRepository, retainedRepository);
+    }
+
+    public void startServer(IConfig config, List<? extends InterceptHandler> handlers, ISslContextCreator sslCtxCreator,
+                            IAuthenticator authenticator, IAuthorizatorPolicy authorizatorPolicy,
+                            ISubscriptionsRepository subscriptionsRepository, IQueueRepository queueRepository,
+                            IRetainedRepository retainedRepository) {
         final long start = System.currentTimeMillis();
         if (handlers == null) {
             handlers = Collections.emptyList();
@@ -158,22 +182,6 @@ public class Server {
         }
         authenticator = initializeAuthenticator(authenticator, config);
         authorizatorPolicy = initializeAuthorizatorPolicy(authorizatorPolicy, config);
-
-        final ISubscriptionsRepository subscriptionsRepository;
-        final IQueueRepository queueRepository;
-        final IRetainedRepository retainedRepository;
-        if (persistencePath != null && !persistencePath.isEmpty()) {
-            LOG.trace("Configuring H2 subscriptions store to {}", persistencePath);
-            h2Builder = new H2Builder(config, scheduler).initStore();
-            subscriptionsRepository = h2Builder.subscriptionsRepository();
-            queueRepository = h2Builder.queueRepository();
-            retainedRepository = h2Builder.retainedRepository();
-        } else {
-            LOG.trace("Configuring in-memory subscriptions store");
-            subscriptionsRepository = new MemorySubscriptionsRepository();
-            queueRepository = new MemoryQueueRepository();
-            retainedRepository = new MemoryRetainedRepository();
-        }
 
         ISubscriptionsDirectory subscriptions = new CTrieSubscriptionDirectory();
         subscriptions.init(subscriptionsRepository);
